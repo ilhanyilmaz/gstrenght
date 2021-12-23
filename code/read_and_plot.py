@@ -12,7 +12,7 @@ import time
 from itertools import count
 import threading
 from tools.ports import select_port
-from tools.settings import PORT_NAME, BAUD_RATE, TIMESTAMP_FORMAT
+from tools.settings import PORT_NAME, BAUD_RATE, TIMESTAMP_FORMAT, MIN_FORCE
 from datetime import datetime
 
 data_name = input("Isim girin: ")
@@ -78,7 +78,7 @@ def get_data():
         data = ser.readline(20) # try empty or different values
         try:
             val = float(data)
-            if val < 0.5:
+            if val < MIN_FORCE:
                 continue
             x_vals.append(next(index)/40.0)
             y_vals.append(float(data))
