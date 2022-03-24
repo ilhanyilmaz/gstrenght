@@ -17,6 +17,12 @@ from tools.ports import select_port
 from tools.settings import DEBUG, PORT_NAME, BAUD_RATE, TIMESTAMP_FORMAT, MIN_FORCE, PLOT_STYLE, X_LABEL, Y_LABEL
 from datetime import datetime
 
+S_INITIAL = 0
+S_READING = 1
+S_STOPPED = 2
+
+STATE = S_INITIAL
+
 reading_active = False
 current_reading_starting_index = 0
 data_name = "default"
@@ -35,16 +41,46 @@ fig.subplots_adjust(bottom=0.2)
 text_box = None
 axbox = fig.add_axes([0.1, 0.01, 0.3, 0.05])
 text_box = TextBox(axbox, 'Isim', textalignment='center')
-buttonbox = fig.add_axes([0.50, 0.01, 0.14, 0.05])
-btn_stop = Button(buttonbox, 'Kaydet')
-buttonbox2 = fig.add_axes([0.65, 0.01, 0.14, 0.05])
-btn_new = Button(buttonbox2, 'Yeni Kayıt')
-buttonbox3 = fig.add_axes([0.80, 0.01, 0.14, 0.05])
-btn_clear = Button(buttonbox3, 'Temizle')
+bb_start = fig.add_axes([0.35, 0.01, 0.14, 0.05])
+btn_start = Button(bb_start, 'Başlat')
+bb_stop = fig.add_axes([0.35, 0.01, 0.14, 0.05])
+btn_stop = Button(bb_stop, 'Durdur')
+bb_save = fig.add_axes([0.50, 0.01, 0.14, 0.05])
+btn_save = Button(bb_save, 'Kaydet')
+bb_new = fig.add_axes([0.65, 0.01, 0.14, 0.05])
+btn_new = Button(bb_new, 'Yeni Kayıt')
+bb_clear = fig.add_axes([0.80, 0.01, 0.14, 0.05])
+btn_clear = Button(bb_clear, 'Temizle')
 
-#btn_stop = Button(buttonbox, 'Kaydet')
+
+#btn_save = Button(bb_save, 'Kaydet')
 
 warning = ""
+
+def set_state(NEW_STATE):
+    STATE = NEW_STATE
+    if STATE == S_INITIAL:
+        axbox.set_visible(True)
+        bb_stop.set_visible(False)
+        bb_start.set_visible(True)
+        bb_save.set_visible(False)
+        bb_new.set_visible(False)
+        bb_clear.set_visible(False)
+    elif STATE == S_READING:
+        axbox.set_visible(False)
+        bb_stop.set_visible(True)
+        bb_start.set_visible(False)
+        bb_save.set_visible(False)
+        bb_new.set_visible(False)
+        bb_clear.set_visible(False)
+    elif STATE == S_STOPPED:
+        axbox.set_visible(False)
+        bb_stop.set_visible(False)
+        bb_start.set_visible(True)
+        bb_save.set_visible(True)
+        bb_new.set_visible(True)
+        bb_clear.set_visible(True)
+
 
 def reset_values():
     global x_vals, y_vals, try_maxes,current_reading_starting_index
@@ -108,7 +144,7 @@ def write_to_file(timestamp=None):
             }
 
             csv_writer.writerow(info)
-def log_current_reading():
+def log_current_max():
     global reading_active, current_reading_starting_index, warning, try_maxes
     reading_active= False
     current_max = max(y_vals[current_reading_starting_index:])
@@ -118,30 +154,30 @@ def log_current_reading():
     current_reading_starting_index=len(x_vals)
 
 def get_data():
-    global ser, reading_active
+    global ser, reading_active, x_vals, y_vals, read_data
     while read_data:
         try:
             data = ser.readline(20) # try empty or different values
             val = float(data)
             if val < MIN_FORCE:
                 if reading_active:
-                    log_current_reading()
+                    log_current_max()
                 continue
             elif reading_active == False:
                 reading_active = True
             x_vals.append(next(index)/40.0)
             y_vals.append(float(data))
         except TypeError as e:
-            break
+            continue
         except:
             data_str = str(data)
             pos = data_str.find('Max kg')
             if pos>0:
                 data_str = data_str[pos+8:]
                 print('Max value is: '+ data_str[:data_str.find('\\')])
-                return
             else:
                 print(data)
+
 
 def start_reading():
     global read_data, y
@@ -165,47 +201,42 @@ def stop_reading():
         print("Couldn't send command to device")
 
 def name_change(expression):
-    global data_name, cid
+    global data_name
     print("name_change event triggered")
     if expression:
         data_name = expression
-        #text_box.on_submit(None)
-        axbox.set_visible(False)
-        buttonbox.set_visible(True)
-        buttonbox2.set_visible(True)
-        buttonbox3.set_visible(True)
-        #reset_values()
-        start_reading()
 
-def add_textbox():
-    axbox.set_visible(True)
-    buttonbox.set_visible(False)
-    buttonbox2.set_visible(False)
-    buttonbox3.set_visible(False)
-
-def on_clear(event):
-    reset_values()
-
-def on_stop_reading(event):
+def on_clear_pressed(event):
     global warning
-    #print(str(event))
-    stop_reading()
+    reset_values()
+    warning = "Veriler Sıfırlandı!"
+
+def on_start_pressed(event):
+    set_state(S_READING)
+    start_reading()
+
+def on_save_pressed(event):
+    global warning
     timestamp = get_timestamp()
     write_to_file(timestamp)
     save_graph(timestamp)
     warning = "Grafik kaydedildi!"
 
-def on_new_reading(event):
+def on_stop_pressed(event):
+    set_state(S_STOPPED)
+    stop_reading()
+
+def on_new_pressed(event):
     global warning
-    #print(str(event))
-    #reset_values()
-    add_textbox()
+    set_state(S_INITIAL)
+    reset_values()
 
 def on_close(event):
     global read_data
     read_data = False
     #plt.close()
     try:
+        ser.write(b'w')
         ser.close()
     except:
         pass
@@ -239,12 +270,13 @@ else:
     ser = get_connection()
     ani = FuncAnimation(plt.gcf(), animate, interval=100) #500ms
 
-
-btn_stop.on_clicked(on_stop_reading)
-btn_new.on_clicked(on_new_reading)
-btn_clear.on_clicked(on_clear)
+btn_start.on_clicked(on_start_pressed)
+btn_save.on_clicked(on_save_pressed)
+btn_new.on_clicked(on_new_pressed)
+btn_clear.on_clicked(on_clear_pressed)
+btn_stop.on_clicked(on_stop_pressed)
 text_box.on_submit(name_change)
-add_textbox()
+set_state(S_INITIAL)
 
 fig.canvas.mpl_connect('close_event', on_close)
 #plt.tight_layout()
