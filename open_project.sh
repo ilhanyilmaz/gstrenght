@@ -1,6 +1,6 @@
 #!/bin/sh
 
-source venv/scripts/activate
+.\venv\Scripts\activate
 cd code
-python read_and_plot.py
+py read_and_plot.py
 $SHELL
